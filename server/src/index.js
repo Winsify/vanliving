@@ -1,60 +1,108 @@
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
-import { v4 as uuidv4 } from 'uuid';
+import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
+import crypto from 'crypto';
 
 const app = express();
-const PORT = process.env.PORT || 9091;
+const PORT = process.env.PORT || 8080;
+
+// Supabase configuration
+const supabaseUrl = process.env.SUPABASE_URL || 'https://erfywhbknzqkddrafxtb.supabase.co';
+const supabaseKey = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVyZnl3aGJrbnpxa2RkcmFmeHRiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkxOTUzOTIsImV4cCI6MjA2NDc3MTM5Mn0.AEaQ--zCcS9jtyROAdtbig_buZoOK9GXXwJqJpj2Y4gI';
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// In-memory storage for demo (replace with database in production)
-const users = new Map();
-const coffeeRecords = new Map();
-const knowledgeArticles = [
-  { id: 1, title: '手冲咖啡入门', content: '手冲咖啡是一种古老的冲泡方式...', category: '入门' },
-  { id: 2, title: '水温水质的讲究', content: '水温是影响咖啡风味的关键因素...', category: '技巧' },
-  { id: 3, title: '常见咖啡豆产区', content: '埃塞俄比亚、哥伦比亚、巴西...', category: '知识' },
-];
+// Initialize database tables
+async function initDatabase() {
+  // Create users table
+  const { error: usersError } = await supabase.rpc('exec', {
+    sql: `
+      CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        nickname TEXT DEFAULT '',
+        is_member BOOLEAN DEFAULT false,
+        member_expire TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `
+  }).catch(() => {
+    // RPC might not exist, create table directly
+    return supabase.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        nickname TEXT DEFAULT '',
+        is_member BOOLEAN DEFAULT false,
+        member_expire TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+  });
+
+  // Create coffee_records table
+  await supabase.rpc('exec', { sql: `
+    CREATE TABLE IF NOT EXISTS coffee_records (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id),
+      origin TEXT,
+      roasts TEXT,
+      process TEXT,
+      grind_size TEXT,
+      water_ratio TEXT,
+      water_amount INTEGER,
+      coffee_amount INTEGER,
+      water_temp INTEGER,
+      brew_time TEXT,
+      flavor TEXT,
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `}).catch(() => {});
+
+  // Create knowledge_articles table
+  await supabase.rpc('exec', { sql: `
+    CREATE TABLE IF NOT EXISTS knowledge_articles (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      content TEXT,
+      category TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `}).catch(() => {});
+
+  console.log('Database initialized');
+}
 
 // Initialize sample data
-coffeeRecords.set('demo', [
-  {
-    id: uuidv4(),
-    userId: 'demo',
-    origin: '埃塞俄比亚 耶加雪菲',
-    roasts: '浅烘',
-    process: '水洗',
-    grindSize: '中细研磨',
-    waterRatio: '1:15',
-    waterAmount: 300,
-    coffeeAmount: 20,
-    waterTemp: 92,
-    brewTime: '2:30',
-    flavor: '柑橘、花香',
-    notes: '酸度明亮，口感干净',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: uuidv4(),
-    userId: 'demo',
-    origin: '哥伦比亚 慧兰',
-    roasts: '中烘',
-    process: '日晒',
-    grindSize: '中研磨',
-    waterRatio: '1:16',
-    waterAmount: 320,
-    coffeeAmount: 20,
-    waterTemp: 90,
-    brewTime: '3:00',
-    flavor: '坚果、巧克力',
-    notes: 'Body饱满，甜感好',
-    createdAt: new Date().toISOString(),
-  },
-]);
+async function initSampleData() {
+  // Check if sample data exists
+  const { data } = await supabase.from('knowledge_articles').select('id').limit(1);
+  
+  if (!data || data.length === 0) {
+    // Insert sample knowledge articles
+    await supabase.from('knowledge_articles').insert([
+      { title: '手冲咖啡入门', content: '手冲咖啡是一种古老的冲泡方式...', category: '入门' },
+      { title: '水温水质的讲究', content: '水温是影响咖啡风味的关键因素...', category: '技巧' },
+      { title: '常见咖啡豆产区', content: '埃塞俄比亚、哥伦比亚、巴西...', category: '知识' },
+      { title: '粉水比的重要性', content: '粉水比决定了咖啡的浓度和口感...', category: '技巧' },
+      { title: '研磨度对风味的影响', content: '不同研磨度会影响萃取率和风味...', category: '技巧' },
+    ]);
+    
+    console.log('Sample data inserted');
+  }
+}
+
+// Initialize on startup
+initDatabase().then(initSampleData).catch(console.error);
 
 // Health check
 app.get('/api/v1/health', (req, res) => {
@@ -62,223 +110,264 @@ app.get('/api/v1/health', (req, res) => {
 });
 
 // User registration
-app.post('/api/v1/auth/register', (req, res) => {
-  const { email, password, nickname } = req.body;
-  
-  if (!email || !password) {
-    return res.status(400).json({ error: '邮箱和密码不能为空' });
+app.post('/api/v1/auth/register', async (req, res) => {
+  try {
+    const { email, password, nickname } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: '邮箱和密码不能为空' });
+    }
+    
+    // Check if user exists
+    const { data: existing } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .single();
+    
+    if (existing) {
+      return res.status(400).json({ error: '该邮箱已注册' });
+    }
+    
+    // Hash password
+    const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
+    
+    // Create user
+    const { data, error } = await supabase
+      .from('users')
+      .insert({
+        email,
+        password: hashedPassword,
+        nickname: nickname || email.split('@')[0],
+        is_member: false
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      user: { id: data.id, email: data.email, nickname: data.nickname, isMember: data.is_member }
+    });
+  } catch (error) {
+    console.error('Register error:', error);
+    res.status(500).json({ error: '注册失败' });
   }
-  
-  if (users.has(email)) {
-    return res.status(400).json({ error: '该邮箱已注册' });
-  }
-  
-  const user = {
-    id: uuidv4(),
-    email,
-    password, // In production, hash this password!
-    nickname: nickname || email.split('@')[0],
-    isMember: false,
-    memberExpire: null,
-    createdAt: new Date().toISOString(),
-  };
-  
-  users.set(email, user);
-  coffeeRecords.set(user.id, []);
-  
-  res.json({
-    success: true,
-    user: { id: user.id, email: user.email, nickname: user.nickname, isMember: user.isMember }
-  });
 });
 
 // User login
-app.post('/api/v1/auth/login', (req, res) => {
-  const { email, password } = req.body;
-  
-  const user = users.get(email);
-  if (!user || user.password !== password) {
-    return res.status(401).json({ error: '邮箱或密码错误' });
-  }
-  
-  res.json({
-    success: true,
-    user: { id: user.id, email: user.email, nickname: user.nickname, isMember: user.isMember }
-  });
-});
-
-// Get user profile
-app.get('/api/v1/users/me', (req, res) => {
-  const userId = req.headers['x-user-id'];
-  if (!userId) {
-    return res.status(401).json({ error: '未登录' });
-  }
-  
-  let user = null;
-  for (const u of users.values()) {
-    if (u.id === userId) {
-      user = u;
-      break;
-    }
-  }
-  
-  if (!user) {
-    return res.status(404).json({ error: '用户不存在' });
-  }
-  
-  res.json({
-    id: user.id,
-    email: user.email,
-    nickname: user.nickname,
-    isMember: user.isMember,
-    memberExpire: user.memberExpire,
-  });
-});
-
-// Coffee records
-app.get('/api/v1/records', (req, res) => {
-  const userId = req.headers['x-user-id'] || 'demo';
-  const records = coffeeRecords.get(userId) || [];
-  res.json(records);
-});
-
-app.post('/api/v1/records', (req, res) => {
-  const userId = req.headers['x-user-id'] || 'demo';
-  const record = {
-    id: uuidv4(),
-    userId,
-    ...req.body,
-    createdAt: new Date().toISOString(),
-  };
-  
-  const records = coffeeRecords.get(userId) || [];
-  records.unshift(record);
-  coffeeRecords.set(userId, records);
-  
-  res.json({ success: true, record });
-});
-
-app.put('/api/v1/records/:id', (req, res) => {
-  const userId = req.headers['x-user-id'] || 'demo';
-  const { id } = req.params;
-  const records = coffeeRecords.get(userId) || [];
-  
-  const index = records.findIndex(r => r.id === id);
-  if (index === -1) {
-    return res.status(404).json({ error: '记录不存在' });
-  }
-  
-  records[index] = { ...records[index], ...req.body };
-  coffeeRecords.set(userId, records);
-  
-  res.json({ success: true, record: records[index] });
-});
-
-app.delete('/api/v1/records/:id', (req, res) => {
-  const userId = req.headers['x-user-id'] || 'demo';
-  const { id } = req.params;
-  const records = coffeeRecords.get(userId) || [];
-  
-  const filtered = records.filter(r => r.id !== id);
-  coffeeRecords.set(userId, filtered);
-  
-  res.json({ success: true });
-});
-
-// Knowledge base
-app.get('/api/v1/knowledge', (req, res) => {
-  res.json(knowledgeArticles);
-});
-
-app.get('/api/v1/knowledge/:id', (req, res) => {
-  const { id } = req.params;
-  const article = knowledgeArticles.find(a => a.id === parseInt(id));
-  
-  if (!article) {
-    return res.status(404).json({ error: '文章不存在' });
-  }
-  
-  res.json(article);
-});
-
-// AI recommendation
-app.post('/api/v1/ai/recommend', async (req, res) => {
-  const { coffee, preference } = req.body;
-  
+app.post('/api/v1/auth/login', async (req, res) => {
   try {
-    // Call LLM API for recommendations
-    const response = await axios.post(
-      'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
-      {
-        model: 'doubao-seed-3-25-sapi',
-        messages: [
-          {
-            role: 'system',
-            content: '你是一个专业的咖啡器具推荐师，根据用户的手冲偏好推荐合适的器具。'
-          },
-          {
-            role: 'user',
-            content: `用户偏好：${preference || '均衡口感'}\n咖啡豆：${coffee?.origin || '通用'}\n请推荐合适的手冲器具（滤杯、手冲壶、磨豆机等），并给出简要说明。`
-          }
-        ],
-        max_tokens: 500,
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.ARK_API_KEY || ''}`,
-        },
-        timeout: 30000,
-      }
-    );
+    const { email, password } = req.body;
     
-    const recommendation = response.data.choices?.[0]?.message?.content || '推荐系统暂时不可用';
+    if (!email || !password) {
+      return res.status(400).json({ error: '邮箱和密码不能为空' });
+    }
+    
+    // Hash password
+    const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
+    
+    // Find user
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .eq('password', hashedPassword)
+      .single();
+    
+    if (error || !data) {
+      return res.status(401).json({ error: '邮箱或密码错误' });
+    }
     
     res.json({
       success: true,
-      recommendation,
-      tools: [
-        { name: 'Hario V60', type: '滤杯', reason: '适合新手，流速可控' },
-        { name: 'Kalita Wave', type: '滤杯', reason: '入门友好，口感稳定' },
-        { name: 'Fellow Stagg', type: '手冲壶', reason: '控温精准，设计美观' },
-      ]
+      user: { id: data.id, email: data.email, nickname: data.nickname, isMember: data.is_member }
     });
   } catch (error) {
-    console.error('AI recommendation error:', error.message);
-    // Return mock data if API fails
-    res.json({
-      success: true,
-      recommendation: `根据您的偏好，推荐使用 Hario V60 滤杯配合 Fellow Stagg 手冲壶，这套组合适合追求${preference || '均衡'}口感的咖啡爱好者。`,
-      tools: [
-        { name: 'Hario V60', type: '滤杯', reason: '适合新手，流速可控' },
-        { name: 'Fellow Stagg', type: '手冲壶', reason: '控温精准' },
-      ]
-    });
+    console.error('Login error:', error);
+    res.status(500).json({ error: '登录失败' });
   }
 });
 
-// File upload
-const upload = multer({ 
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
-});
-
-app.post('/api/v1/upload', upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: '没有上传文件' });
+// Get coffee records
+app.get('/api/v1/records', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    
+    if (!userId) {
+      return res.status(401).json({ error: '未登录' });
+    }
+    
+    const { data, error } = await supabase
+      .from('coffee_records')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    res.json({ records: data || [] });
+  } catch (error) {
+    console.error('Get records error:', error);
+    res.status(500).json({ error: '获取记录失败' });
   }
-  
-  const fileUrl = `/uploads/${uuidv4()}-${req.file.originalname}`;
-  
-  res.json({
-    success: true,
-    url: fileUrl,
-    filename: req.file.originalname,
-    size: req.file.size,
-  });
 });
 
-app.listen(PORT, () => {
-  console.log(`Vanliving API server running on port ${PORT}`);
+// Create coffee record
+app.post('/api/v1/records', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    
+    if (!userId) {
+      return res.status(401).json({ error: '未登录' });
+    }
+    
+    const { data, error } = await supabase
+      .from('coffee_records')
+      .insert({ ...req.body, user_id: userId })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    res.json({ success: true, record: data });
+  } catch (error) {
+    console.error('Create record error:', error);
+    res.status(500).json({ error: '创建记录失败' });
+  }
+});
+
+// Delete coffee record
+app.delete('/api/v1/records/:id', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    const { id } = req.params;
+    
+    if (!userId) {
+      return res.status(401).json({ error: '未登录' });
+    }
+    
+    const { error } = await supabase
+      .from('coffee_records')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete record error:', error);
+    res.status(500).json({ error: '删除记录失败' });
+  }
+});
+
+// Get knowledge articles
+app.get('/api/v1/knowledge', async (req, res) => {
+  try {
+    const { category } = req.query;
+    
+    let query = supabase.from('knowledge_articles').select('*');
+    
+    if (category) {
+      query = query.eq('category', category);
+    }
+    
+    const { data, error } = await query.order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    res.json({ articles: data || [] });
+  } catch (error) {
+    console.error('Get knowledge error:', error);
+    res.status(500).json({ error: '获取知识库失败' });
+  }
+});
+
+// AI recommendation endpoint
+app.post('/api/v1/ai/recommend', async (req, res) => {
+  try {
+    const { origin, roasts, process: processMethod } = req.body;
+    
+    // Mock AI recommendation based on input
+    const recommendations = [];
+    
+    if (origin) {
+      recommendations.push({
+        type: 'origin',
+        text: `推荐使用 92-94°C 的水温冲泡 ${origin}，可以更好地展现其风味特点。`
+      });
+    }
+    
+    if (roasts === '浅烘') {
+      recommendations.push({
+        type: 'temperature',
+        text: '浅烘咖啡建议使用较高水温（93-96°C）和较长萃取时间（2:30-3:00）。'
+      });
+    } else if (roasts === '深烘') {
+      recommendations.push({
+        type: 'temperature',
+        text: '深烘咖啡建议使用较低水温（88-91°C）和较短萃取时间（1:45-2:15）。'
+      });
+    }
+    
+    if (processMethod === '水洗') {
+      recommendations.push({
+        type: 'process',
+        text: '水洗处理的咖啡酸度更明亮，建议搭配细研磨。'
+      });
+    } else if (processMethod === '日晒') {
+      recommendations.push({
+        type: 'process',
+        text: '日晒处理的咖啡甜度更高，建议使用中等研磨。'
+      });
+    }
+    
+    // Default recommendation
+    if (recommendations.length === 0) {
+      recommendations.push({
+        type: 'general',
+        text: '推荐使用 1:15 的粉水比，中细研磨，水温 92-94°C，萃取时间 2:00-2:30。'
+      });
+    }
+    
+    res.json({ recommendations });
+  } catch (error) {
+    console.error('AI recommend error:', error);
+    res.status(500).json({ error: 'AI推荐失败' });
+  }
+});
+
+// Membership upgrade (mock)
+app.post('/api/v1/membership/upgrade', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    
+    if (!userId) {
+      return res.status(401).json({ error: '未登录' });
+    }
+    
+    // Mock upgrade - in production, integrate with payment
+    const expireDate = new Date();
+    expireDate.setFullYear(expireDate.getFullYear() + 1);
+    
+    const { error } = await supabase
+      .from('users')
+      .update({ is_member: true, member_expire: expireDate.toISOString() })
+      .eq('id', userId);
+    
+    if (error) throw error;
+    
+    res.json({ success: true, message: '会员开通成功', expireDate: expireDate.toISOString() });
+  } catch (error) {
+    console.error('Membership upgrade error:', error);
+    res.status(500).json({ error: '开通会员失败' });
+  }
+});
+
+// Start server
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/api/v1/health`);
 });
