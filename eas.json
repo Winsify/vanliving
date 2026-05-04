@@ -15,7 +15,11 @@
     },
     "production": {
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "gradleOptions": {
+          "android.enableProguard": "true",
+          "android.enableR8": "true"
+        }
       }
     }
   },
