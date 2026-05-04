@@ -11,28 +11,30 @@
     "lint": "expo lint"
   },
   "dependencies": {
-    "@expo/vector-icons": "^14.0.4",
+    "@expo/metro-runtime": "^55.0.10",
+    "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "^2.1.2",
     "expo": "~54.0.33",
-    "expo-constants": "~17.1.6",
-    "expo-linking": "~7.1.5",
-    "expo-router": "~5.0.7",
-    "expo-status-bar": "~2.2.3",
-    "expo-system-ui": "~5.0.7",
+    "expo-constants": "~18.0.13",
+    "expo-font": "^55.0.6",
+    "expo-linking": "~8.0.12",
+    "expo-router": "~6.0.23",
+    "expo-status-bar": "~3.0.9",
+    "expo-system-ui": "~6.0.9",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
-    "react-native-gesture-handler": "~2.24.0",
-    "react-native-reanimated": "~3.17.4",
-    "react-native-safe-area-context": "5.4.0",
-    "react-native-screens": "~4.11.1",
-    "react-native-web": "~0.20.0"
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-reanimated": "~4.1.7",
+    "react-native-safe-area-context": "5.6.2",
+    "react-native-screens": "~4.16.0",
+    "react-native-web": "~0.21.2"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~19.1.2",
     "eas-cli": "^16.0.0",
-    "typescript": "~5.8.3"
+    "typescript": "~5.9.3"
   },
   "private": true
 }
