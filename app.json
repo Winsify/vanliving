@@ -35,6 +35,11 @@
     "experiments": {
       "typedRoutes": true
     },
+    "updates": {
+      "enabled": true,
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/63b24aa6-0493-47f4-a798-b79d0f32de06"
+    },
     "extra": {
       "backendUrl": "http://115.175.79.172:8080",
       "eas": {
