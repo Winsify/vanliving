@@ -30,8 +30,7 @@
       "favicon": "./assets/images/vanliving logo1.png"
     },
     "plugins": [
-      "expo-router",
-      "uniwind"
+      "expo-router"
     ],
     "experiments": {
       "typedRoutes": true
