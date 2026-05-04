@@ -1,0 +1,7 @@
+[project]
+entrypoint = "client/app"
+requires = ["nodejs-24"]
+
+[dev]
+build = ["pnpm install"]
+run = ["npx", "expo", "start", "--tunnel"]
