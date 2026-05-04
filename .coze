@@ -1,5 +1,5 @@
 [project]
-entrypoint = "client/app"
+entrypoint = "app"
 requires = ["nodejs-24"]
 
 [dev]
