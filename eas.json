@@ -19,15 +19,6 @@
       }
     }
   },
-  "updates": {
-    "url": "https://u.expo.dev/your-project-id",
-    "requestHeaders": {
-      "expo-channel-name": "production"
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    }
-  },
   "submit": {
     "production": {}
   }
